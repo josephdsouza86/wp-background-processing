@@ -253,7 +253,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 *
 	 * @return stdClass Return the first batch from the queue
 	 */
-	protected function get_batch() {
+	protected function get_batch( $batch_limit = 0 ) {
 		global $wpdb;
 
 		$table        = $wpdb->options;
@@ -282,6 +282,10 @@ abstract class WP_Background_Process extends WP_Async_Request {
 		$batch->key  = $query->$column;
 		$batch->data = maybe_unserialize( $query->$value_column );
 
+		if ($batch_limit > 0 && count( $batch->data ) > $batch_limit) {
+			$batch->data = array_slice($batch->data, 0, $batch_limit);
+		}
+
 		return $batch;
 	}
 
@@ -292,52 +296,60 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 * within server memory and time limit constraints.
 	 */
 	protected function handle() {
-		$this->lock_process();
+		if ( ! $this->time_exceeded() && ! $this->memory_exceeded() && ! $this->is_queue_empty() && !$this->is_process_running() ) {
+			// Prevent duplicate instances
+			$this->lock_process();
 
-		// do {
-			$batch = $this->get_batch();
+			// Get the batch to process
+			$batch = $this->get_batch( $this->batch_limit() );
 			$batch_key = $batch->key;
 
-			foreach ($batch->data as $key => $value) {
-				$task = $this->task($value, $batch_key);
-	
-				if (false !== $task) {
-					// Update queue item for later
-					$batch->data[$key] = $task;
-				} else {
-					// Remove
-					unset($batch->data[$key]);
-				}
-	
-				// Check and update or delete current batch immediately after processing each item
-				if (!empty($batch->data)) {
-					$this->update($batch->key, $batch->data);
-				} else {
-					$this->delete($batch->key);
-					break;
-				}
-	
-				if ($this->time_exceeded() || $this->memory_exceeded()) {
-					// Batch limits reached.
-					break;
+			try {
+				foreach ($batch->data as $key => $value) {
+					// Process this item
+					$task = $this->task($value, $batch_key);
+		
+					if (false !== $task) {
+						// Retain queue item for later
+						$batch->data[$key] = $task;
+					} else {
+						// Remove
+						unset($batch->data[$key]);
+					}
+		
+					// Check and update/delete current batch immediately after processing each item
+					if (!empty($batch->data)) {
+						$this->update($batch_key, $batch->data);
+					} else {
+						$this->delete($batch_key);
+						break;
+					}
+		
+					if ($this->time_exceeded() || $this->memory_exceeded()) {
+						// Batch limits reached.
+						break;
+					}
 				}
 			}
+			catch (Exception $ex) {
+				/* Not sure what to do here at the moment */
+			} finally {
+				// Update or delete current batch.
+				if ( ! empty( $batch->data ) ) {
+					$this->update( $batch_key, $batch->data );
+				} else {
+					$this->delete( $batch_key );
+				}
 
-			// Update or delete current batch.
-			// if ( ! empty( $batch->data ) ) {
-			// 	$this->update( $batch->key, $batch->data );
-			// } else {
-			// 	$this->delete( $batch->key );
-			// }
-		// } while ( ! $this->time_exceeded() && ! $this->memory_exceeded() && ! $this->is_queue_empty() );
+				$this->unlock_process();
 
-		$this->unlock_process();
-
-		// Start next batch or complete process.
-		if ( ! $this->is_queue_empty() ) {
-			$this->dispatch();
-		} else {
-			$this->complete($batch_key);
+				// Start next batch or complete process.
+				if ( ! $this->is_queue_empty() ) {
+					$this->dispatch();
+				} else {
+					$this->complete($batch_key);
+				}
+			}
 		}
 
 		wp_die();
@@ -401,6 +413,16 @@ abstract class WP_Background_Process extends WP_Async_Request {
 		}
 
 		return apply_filters( $this->identifier . '_time_exceeded', $return );
+	}
+
+	/**
+	 * Batch size limitation.
+	 * 
+	 * Allows a batch size to be set for each instace of a 
+	 * CRON job. Leave as 0 for no size limit.
+	 */
+	protected function batch_limit() {
+		return apply_filters( $this->identifier . '_batch_limit', 0 );
 	}
 
 	/**
@@ -490,7 +512,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 */
 	public function cancel_process() {
 		if ( ! $this->is_queue_empty() ) {
-			$batch = $this->get_batch();
+			$batch = $this->get_batch( 0 );
 
 			$this->delete( $batch->key );
 
