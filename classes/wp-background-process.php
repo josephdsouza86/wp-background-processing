@@ -34,14 +34,6 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	protected $start_time = 0;
 
 	/**
-	 * Batch size limitation.
-	 * 
-	 * Allows a batch size to be set for each instace of a 
-	 * CRON job. Leave as 0 for no size limit.
-	 */
-	protected $batch_limit = 0;
-
-	/**
 	 * Cron_hook_identifier
 	 *
 	 * @var mixed
@@ -261,7 +253,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 *
 	 * @return stdClass Return the first batch from the queue
 	 */
-	protected function get_batch( ) {
+	protected function get_batch() {
 		global $wpdb;
 
 		$table        = $wpdb->options;
@@ -290,10 +282,6 @@ abstract class WP_Background_Process extends WP_Async_Request {
 		$batch->key  = $query->$column;
 		$batch->data = maybe_unserialize( $query->$value_column );
 
-		if ($this->batch_limit > 0 && count( $batch->data ) > $this->batch_limit) {
-			$batch->data = array_slice($batch->data, 0, $this->batch_limit);
-		}
-
 		return $batch;
 	}
 
@@ -309,7 +297,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 			$this->lock_process();
 
 			// Get the batch to process
-			$batch = $this->get_batch( );
+			$batch = $this->get_batch();
 			$batch_key = $batch->key;
 
 			try {
@@ -510,7 +498,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 */
 	public function cancel_process() {
 		if ( ! $this->is_queue_empty() ) {
-			$batch = $this->get_batch( );
+			$batch = $this->get_batch();
 
 			$this->delete( $batch->key );
 
