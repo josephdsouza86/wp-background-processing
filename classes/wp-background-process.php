@@ -261,7 +261,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 *
 	 * @return stdClass Return the first batch from the queue
 	 */
-	protected function get_batch( $batch_limit = 0 ) {
+	protected function get_batch( ) {
 		global $wpdb;
 
 		$table        = $wpdb->options;
@@ -290,8 +290,8 @@ abstract class WP_Background_Process extends WP_Async_Request {
 		$batch->key  = $query->$column;
 		$batch->data = maybe_unserialize( $query->$value_column );
 
-		if ($batch_limit > 0 && count( $batch->data ) > $batch_limit) {
-			$batch->data = array_slice($batch->data, 0, $batch_limit);
+		if ($this->batch_limit > 0 && count( $batch->data ) > $this->batch_limit) {
+			$batch->data = array_slice($batch->data, 0, $this->batch_limit);
 		}
 
 		return $batch;
@@ -309,7 +309,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 			$this->lock_process();
 
 			// Get the batch to process
-			$batch = $this->get_batch( $this->batch_limit() );
+			$batch = $this->get_batch( );
 			$batch_key = $batch->key;
 
 			try {
@@ -510,7 +510,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 */
 	public function cancel_process() {
 		if ( ! $this->is_queue_empty() ) {
-			$batch = $this->get_batch( 0 );
+			$batch = $this->get_batch( );
 
 			$this->delete( $batch->key );
 
