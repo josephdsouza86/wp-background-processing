@@ -511,6 +511,6 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 *
 	 * @return mixed
 	 */
-	abstract protected function task( $item );
+	abstract protected function task( $item, $batch_key );
 
 }
