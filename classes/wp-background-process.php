@@ -296,9 +296,10 @@ abstract class WP_Background_Process extends WP_Async_Request {
 
 		// do {
 			$batch = $this->get_batch();
+			$batch_key = $batch->key;
 
 			foreach ($batch->data as $key => $value) {
-				$task = $this->task($value);
+				$task = $this->task($value, $batch_key);
 	
 				if (false !== $task) {
 					// Update queue item for later
@@ -336,7 +337,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 		if ( ! $this->is_queue_empty() ) {
 			$this->dispatch();
 		} else {
-			$this->complete();
+			$this->complete($batch_key);
 		}
 
 		wp_die();
@@ -408,7 +409,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 * Override if applicable, but ensure that the below actions are
 	 * performed, or, call parent::complete().
 	 */
-	protected function complete() {
+	protected function complete($batch_key) {
 		// Unschedule the cron healthcheck.
 		$this->clear_scheduled_event();
 	}
