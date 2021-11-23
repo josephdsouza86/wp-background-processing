@@ -34,6 +34,14 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	protected $start_time = 0;
 
 	/**
+	 * Batch size limitation.
+	 * 
+	 * Allows a batch size to be set for each instace of a 
+	 * CRON job. Leave as 0 for no size limit.
+	 */
+	protected $batch_limit = 0;
+
+	/**
 	 * Cron_hook_identifier
 	 *
 	 * @var mixed
@@ -413,16 +421,6 @@ abstract class WP_Background_Process extends WP_Async_Request {
 		}
 
 		return apply_filters( $this->identifier . '_time_exceeded', $return );
-	}
-
-	/**
-	 * Batch size limitation.
-	 * 
-	 * Allows a batch size to be set for each instace of a 
-	 * CRON job. Leave as 0 for no size limit.
-	 */
-	protected function batch_limit() {
-		return apply_filters( $this->identifier . '_batch_limit', 0 );
 	}
 
 	/**
