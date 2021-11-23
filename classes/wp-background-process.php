@@ -304,7 +304,7 @@ abstract class WP_Background_Process extends WP_Async_Request {
 	 * within server memory and time limit constraints.
 	 */
 	protected function handle() {
-		if ( ! $this->time_exceeded() && ! $this->memory_exceeded() && ! $this->is_queue_empty() && !$this->is_process_running() ) {
+		if ( ! $this->is_queue_empty() && !$this->is_process_running() ) {
 			// Prevent duplicate instances
 			$this->lock_process();
 
