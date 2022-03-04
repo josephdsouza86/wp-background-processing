@@ -76,9 +76,9 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
          * @access public
          * @return void
          */
-        public function dispatch() {
+        public function dispatch( $scheduled_time = null ) {
             // Schedule the cron healthcheck.
-            $this->schedule_event();
+            $this->schedule_event( $scheduled_time );
 
             if ( function_exists( 'custom_log_file' ) ) {
                 $items_left = count( $this->data );
@@ -96,8 +96,12 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
          *
          * @return $this
          */
-        public function push_to_queue( $data ) {
-            $this->data[] = $data;
+        public function push_to_queue( $data, $key = null ) {            
+            if ($key) {
+                $this->data[$key] = $data;        
+            } else {
+                $this->data[] = $data;        
+            }
 
             return $this;
         }
@@ -134,7 +138,7 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
          * Saves items to the batch only if it is not processing, otherwise 
          * it starts a fresh batch
          */
-        public function safe_push_to_queue_and_save ( $data ) {
+        public function safe_push_to_queue_and_save ( $data, $key = null ) {
             if ( !$this->unique_batch_key || ( $this->unique_batch_key && $this->is_batch_running( $this->unique_batch_key ) ) ) {
                 // Ensure we have a unique batch key. Don't reuse a batch key if it is being
                 // processed (as adding and removing will clash)
@@ -145,7 +149,7 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
                 $this->data = [];
             }
 
-            return $this->push_to_queue( $data )->save();
+            return $this->push_to_queue( $data, $key )->save();
         }
 
         /**
@@ -262,11 +266,6 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
             return ( $count > 0 ) ? false : true;
         }
 
-        /**
-         * Get unchached transient 
-         * 
-         * Bypass the cache to get the value of a transient 
-         */
         protected function get_uncached_transient( $name ) {
             global $wpdb;
             
@@ -374,12 +373,12 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
             $key = $wpdb->esc_like( $this->identifier . '_batch_' ) . '%';
 
             $query = $wpdb->get_row( $wpdb->prepare( "
-			SELECT *
-			FROM {$table}
-			WHERE {$column} LIKE %s
-			ORDER BY {$key_column} ASC
-			LIMIT 1
-		", $key ) );
+                SELECT *
+                FROM {$table}
+                WHERE {$column} LIKE %s
+                ORDER BY {$key_column} ASC
+                LIMIT 1
+            ", $key ) );
 
             $batch = new stdClass();
             $batch->key = $query->$column;
@@ -594,9 +593,9 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
         /**
          * Schedule event
          */
-        protected function schedule_event() {
+        protected function schedule_event( $scheduled_time = null ) {
             if ( !wp_next_scheduled( $this->cron_hook_identifier ) ) {
-                wp_schedule_event( time(), $this->cron_interval_identifier, $this->cron_hook_identifier );
+                wp_schedule_event( $scheduled_time ? $scheduled_time : time(), $this->cron_interval_identifier, $this->cron_hook_identifier );
             }
         }
 
