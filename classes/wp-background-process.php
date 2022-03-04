@@ -98,6 +98,11 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
          */
         public function push_to_queue( $data, $key = null ) {            
             if ($key) {
+                if ( $this->data[$key] ) {
+                    if ( function_exists( 'custom_log_file' ) ) {
+                        custom_log_file( "[Updated] $key item already in queue.", "$this->unique_batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
+                    }
+                }
                 $this->data[$key] = $data;        
             } else {
                 $this->data[] = $data;        
