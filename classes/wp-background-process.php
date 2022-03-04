@@ -80,6 +80,11 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
             // Schedule the cron healthcheck.
             $this->schedule_event();
 
+            if ( function_exists( 'custom_log_file' ) ) {
+                $items_left = count( $this->data );
+                custom_log_file( "[Dispatched] $items_left items in queue.", "$this->unique_batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
+            }
+
             // Perform remote post.
             return parent::dispatch();
         }
@@ -110,11 +115,16 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
             }
 
             if ( !empty( $this->data ) ) {
+                // $added = $this->save_batch( $this->unique_batch_key, $this->data );
+                $added = update_site_option( $this->unique_batch_key, $this->data );
                 if ( function_exists( 'custom_log_file' ) ) {
-                    $items_left = count( $this->data );
-                    custom_log_file( "[Save] $items_left items in queue.", "$this->unique_batch_key.txt", "/al-log/batch/" . date("Ymd") );
+                    if ( !$added ) {
+                        custom_log_file( "[Save failed] Couldn't add item to the queue.", "$this->unique_batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
+                    } else {
+                        $items_left = count( $this->data );
+                        custom_log_file( "[Saved] $items_left items in queue.", "$this->unique_batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
+                    }
                 }
-                update_site_option( $this->unique_batch_key, $this->data );
             }
 
             return $this;
@@ -131,6 +141,7 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
                 $this->unique_batch_key = $this->generate_key();
 
                 // Reset data
+                $this->delete( $this->unique_batch_key );
                 $this->data = [];
             }
 
@@ -144,9 +155,9 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
          */
         public function get_queue_status () {
             if ($this->is_process_running()) {
-                return "Processing queue";
+                return "processing";
             } else if ( $this->is_queue_empty() ) {
-                return "Idle (nothing in queue)";
+                return "idle";
             }
             return "Unknown";
         }
@@ -321,7 +332,7 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
 
             if ( !empty( $batch_key ) ) {
                 if ( function_exists( 'custom_log_file' ) ) {
-                    custom_log_file( "[Info] Locking batch $batch_key", "$batch_key.txt", "/al-log/batch/" . date("Ymd") );
+                    custom_log_file( "[Info] Locking batch $batch_key", "$batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
                 }
                 set_site_transient( $this->identifier . '_current_batch', $batch_key, $lock_duration );
             }
@@ -388,12 +399,13 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
                 // Get the batch to process
                 $batch = $this->get_batch();
                 $batch_key = $batch->key;
+                $batch_size = count( $batch->data );
 
                 // Indicate which batch is processing
                 $this->lock_process( $batch_key );
 
                 if ( function_exists( 'custom_log_file' ) ) {
-                    custom_log_file( "[Info] Staring ...", "$batch_key.txt", "/al-log/batch/" . date("Ymd") );
+                    custom_log_file( "[Info] Staring. $batch_size items in the batch ... ", "$batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
                 }
 
                 try {
@@ -425,7 +437,7 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
                 } catch ( Exception $ex ) {
                     /* Not sure what to do here at the moment */
                     if ( function_exists( 'custom_log_file' ) ) {
-                        custom_log_file( "[Exception] {$ex->getMessage()}", "$batch_key.txt", "/al-log/batch/" . date("Ymd") );
+                        custom_log_file( "[Exception] {$ex->getMessage()}", "$batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
                     }
                 } finally {
                     // Update or delete current batch.
@@ -437,7 +449,7 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
 
                     if ( function_exists( 'custom_log_file' ) ) {
                         $items_left = count( $batch->data );
-                        custom_log_file( "[Info] Batch stopped. $items_left items left.", "$batch_key.txt", "/al-log/batch/" . date("Ymd") );
+                        custom_log_file( "[Info] Batch stopped. $items_left items left.", "$batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
                     }
 
                     $this->unlock_process();
@@ -445,12 +457,12 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
                     // Start next batch or complete process.
                     if ( !$this->is_queue_empty() ) {
                         if ( function_exists( 'custom_log_file' ) ) {
-                            custom_log_file( "[Info] Start next batch.", "$batch_key.txt", "/al-log/batch/" . date("Ymd") );
+                            custom_log_file( "[Info] Start next batch.", "$batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
                         }
                         $this->dispatch();
                     } else {
                         if ( function_exists( 'custom_log_file' ) ) {
-                            custom_log_file( "[Info] Complete.", "$batch_key.txt", "/al-log/batch/" . date("Ymd") );
+                            custom_log_file( "[Info] Complete.", "$batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
                         }
                         $this->complete( $batch_key );
                     }
