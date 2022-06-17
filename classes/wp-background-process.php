@@ -82,11 +82,15 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
 
             if ( function_exists( 'custom_log_file' ) ) {
                 $items_left = count( $this->data );
-                custom_log_file( "[Dispatched] $items_left items in queue.", "$this->unique_batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
+                custom_log_file( "[Dispatch] $items_left items in queue.", "$this->unique_batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
             }
 
-            // Perform remote post.
-            return parent::dispatch();
+            if ( is_null( $scheduled_time ) || $scheduled_time < time() ) {
+                // Execute immediately, perform remote post.
+                return parent::dispatch();
+            } else {
+                return $scheduled_time;
+            }
         }
 
         /**
@@ -137,6 +141,29 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
             }
 
             return $this;
+        }
+
+        public function safe_push_to_queue_and_save ( $data, $key = null ) {
+            if ( !$this->unique_batch_key || ( $this->unique_batch_key && $this->is_batch_running( $this->unique_batch_key ) ) ) {
+                // Ensure we have a unique batch key. Don't reuse a batch key if it is being
+                // processed (as adding and removing will clash)
+                $this->unique_batch_key = $this->generate_key();
+
+                // Reset data
+                $this->delete( $this->unique_batch_key );
+                $this->data = [];                
+            }
+
+            return $this->push_to_queue( $data, $key )->save();
+        }
+
+        public function get_queue_status () {
+            if ($this->is_process_running()) {
+                return "processing";
+            } else if ( $this->is_queue_empty() ) {
+                return "idle";
+            }
+            return "Unknown";
         }
 
         /**
@@ -215,7 +242,7 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
             $prepend = $this->identifier . '_batch_';
 
             return substr( $prepend . $unique, 0, $length );
-        }
+        }     
 
         /**
          * Maybe process queue
@@ -390,6 +417,43 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
             $batch->data = maybe_unserialize( $query->$value_column );
 
             return $batch;
+        }
+
+        /**
+         * Test method
+         */
+        protected function save_batch( $batch_key, $data ) {
+            global $wpdb;
+
+            $table = $wpdb->options;
+            $name_column = 'option_name';
+            $id_column = 'option_id';
+            $value_column = 'option_value';
+
+            if ( is_multisite() ) {
+                $table = $wpdb->sitemeta;
+                $name_column = 'meta_key';
+                $id_column = 'meta_id';
+                $value_column = 'meta_value';
+            }
+
+            // Does exist
+            $exists = $wpdb->get_var( $wpdb->prepare( "
+                SELECT option_id
+                FROM {$table}
+                WHERE {$name_column} = {$batch_key}
+                LIMIT 1
+            " ) );
+
+            if ($exists) {
+                // Update
+                $result = $wpdb->update( $table, [ $value_column => maybe_serialize( $data ) ], [ $name_column => $batch_key ] );
+            } else {
+                // Insert
+                $result = $wpdb->insert( $table, [ $name_column => $batch_key, $value_column => maybe_serialize( $data ), 'autoload' => 'no' ] );
+            }
+
+            return $result;
         }
 
         /**
@@ -601,6 +665,14 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
         protected function schedule_event( $scheduled_time = null ) {
             if ( !wp_next_scheduled( $this->cron_hook_identifier ) ) {
                 wp_schedule_event( $scheduled_time ? $scheduled_time : time(), $this->cron_interval_identifier, $this->cron_hook_identifier );
+                if ( function_exists( 'custom_log_file' ) ) {
+                    $date = date( "d-m-Y H:i:s", $scheduled_time );
+                    custom_log_file( "[Scheduled for $date]", "$this->unique_batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
+                }
+            } else {
+                if ( function_exists( 'custom_log_file' ) ) {
+                    custom_log_file( "[Already Scheduled]", "$this->unique_batch_key.txt", "/al-log/$this->action/batch/" . date("Ymd") );
+                }
             }
         }
 
