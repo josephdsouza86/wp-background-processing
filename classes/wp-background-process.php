@@ -143,28 +143,6 @@ if ( !class_exists( 'AL_Background_Process' ) ) {
             return $this;
         }
 
-        public function safe_push_to_queue_and_save ( $data, $key = null ) {
-            if ( !$this->unique_batch_key || ( $this->unique_batch_key && $this->is_batch_running( $this->unique_batch_key ) ) ) {
-                // Ensure we have a unique batch key. Don't reuse a batch key if it is being
-                // processed (as adding and removing will clash)
-                $this->unique_batch_key = $this->generate_key();
-
-                // Reset data
-                $this->delete( $this->unique_batch_key );
-                $this->data = [];                
-            }
-
-            return $this->push_to_queue( $data, $key )->save();
-        }
-
-        public function get_queue_status () {
-            if ($this->is_process_running()) {
-                return "processing";
-            } else if ( $this->is_queue_empty() ) {
-                return "idle";
-            }
-            return "Unknown";
-        }
 
         /**
          * Saves items to the batch only if it is not processing, otherwise 
